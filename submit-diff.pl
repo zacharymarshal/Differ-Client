@@ -7,9 +7,6 @@ use LWP::UserAgent;
 use File::Temp qw(tempfile tmpnam);
 use POSIX qw(strftime ttyname);
 
-our $URL = "http://differ.codingavenue.com/";
-our $DEFAULT_DOMAIN = "codingavenue.com.com";
-
 my $PARAMS = get_params();
 submit($PARAMS);
 
@@ -22,41 +19,20 @@ sub get_params {
 	}
 
 	if (!keys %params) {
-		warn "WARNING: No parameters passed\n";
-		warn "USAGE: $0 comment='whatever' username=you\@place.com notify_address=guy\@review.com password=optional parent_diff_id=382382 diff=/home/foo.diff\n";
+		warn "USAGE: $0 comment='whatever' username=you\@place.com notify_address=guy\@review.com password=optional parent_diff_id=382382 diff=/home/foo.diff differ_url=http://differ.foo.com\n";
 		warn "OPTIONAL: pt_token=d923klad93 pt_project_id=771987 pt_story_id=500391613323232";
 		exit;
 	}
 
 	$params{comment}        ||= "";
 	$params{username}       ||= $ENV{USER};
-
-	if ($params{username} !~ /@/) {
-		if (my $domain = $ENV{DIFFER_DOMAIN}) {
-			$params{username} .= "\@$domain";
-		}
-		else {
-			$params{username} .= "\@$DEFAULT_DOMAIN";
-		}
-	}
-
 	$params{notify_address} ||= "";
-
-	if (!$params{notify_address} && $ENV{DIFFER_DEFAULT_NOTIFY}) {
-		$params{notify_address} = $ENV{DIFFER_DEFAULT_NOTIFY};
-	}
-
-	if ($params{notify_address} && $params{notify_address} !~ /@/) {
-		if (my $domain = $ENV{DIFFER_DOMAIN}) {
-			$params{username} .= "\@$domain";
-		}
-		else {
-			$params{username} .= "\@$DEFAULT_DOMAIN";
-		}
-	}
-
 	$params{password}       ||= "";
-	$params{parent_diff_id}        ||= "";
+	$params{parent_diff_id} ||= "";
+
+	if (!$params{differ_url}) {
+		die "differ_url is required";
+	}
 
 	if (!$params{diff}) {
 		my ($fh, $filename) = tempfile();
@@ -96,12 +72,12 @@ sub submit {
 
 	$agent->timeout(90);
 
-	if ($URL =~ /^https/) {
+	if ($params->{differ_url} =~ /^https/) {
 		$agent->ssl_opts('verify_hostname', 0); # Ignore SSL errors
 	}
 
 	my $res = $agent->post(
-		$URL,
+		$params->{differ_url},
 		[], 
 		Content_Type => "multipart/form-data",
 		Content => [%$params]
