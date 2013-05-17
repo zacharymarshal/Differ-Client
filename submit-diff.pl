@@ -7,14 +7,14 @@ use LWP::UserAgent;
 use File::Temp qw(tempfile tmpnam);
 use POSIX qw(strftime ttyname);
 
-our $URL = "https://mydifferurl.example/";
-our $DEFAULT_DOMAIN = "differ.com";
+our $URL = "http://differ.codingavenue.com/";
+our $DEFAULT_DOMAIN = "codingavenue.com.com";
 
 my $PARAMS = get_params();
 submit($PARAMS);
 
 sub get_params {
-	my %params;
+	my %params = get_defaults();
 
 	for my $param (@ARGV) {
 		my ($k, $v) = split /=/, $param;
@@ -24,6 +24,8 @@ sub get_params {
 	if (!keys %params) {
 		warn "WARNING: No parameters passed\n";
 		warn "USAGE: $0 comment='whatever' username=you\@place.com notify_address=guy\@review.com password=optional parent_diff_id=382382 diff=/home/foo.diff\n";
+		warn "OPTIONAL: pt_token=d923klad93 pt_project_id=771987 pt_story_id=500391613323232";
+		exit;
 	}
 
 	$params{comment}        ||= "";
@@ -92,8 +94,12 @@ sub submit {
 
 	$params->{diff} = [$params->{diff}];
 
-	$agent->timeout(60);
-	$agent->ssl_opts('verify_hostname', 0); # Ignore SSL errors
+	$agent->timeout(90);
+
+	if ($URL =~ /^https/) {
+		$agent->ssl_opts('verify_hostname', 0); # Ignore SSL errors
+	}
+
 	my $res = $agent->post(
 		$URL,
 		[], 
@@ -109,9 +115,46 @@ sub submit {
 		my $url = $res->content;
 		print "$url\n";
 
+		pt_update_story($params, $url);
+
 		open my $log, ">>", "$ENV{HOME}/.review_log"
 			or die $!;
 		my $now = strftime "%F %T", localtime;
 		print $log "$now\t$url\t$$params{comment}\n";
 	}
 }
+
+sub pt_update_story {
+	my $params = shift;
+	my $url    = shift;
+
+	my $token      = $params->{pt_token}      || return;
+	my $project_id = $params->{pt_project_id} || return;
+	my $story_id   = $params->{pt_story_id}   || return;
+
+	require WWW::PivotalTracker;
+
+	WWW::PivotalTracker::add_note(
+		$token,
+		$project_id,
+		$story_id,
+		"Differ Update from $$params{username}: $url\n\n$$params{comment}"
+	);
+}
+
+sub get_defaults {
+	my $file = "$ENV{HOME}/.differ_defaults";
+	return unless -e $file;
+	my %defaults;
+
+	open my $fh, "<", $file or die $!; 
+
+	while (my $line = <$fh>) {
+		chomp $line;
+		my ($key, $value) = split /=/, $line;
+		$defaults{$key} = $value;
+	}   
+
+	return %defaults;
+}
+
